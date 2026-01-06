@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CVSLR | Elegant AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ range(1, 10000) | random }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <!-- LEFT SIDEBAR: CONTROLS & INPUT -->
+        <aside class="sidebar left-sidebar glass-panel">
+            <div class="logo">
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 1.3rem; font-weight: 800; letter-spacing: 0.1em;">CVSLR</span>
+                    <span style="font-size: 0.7rem; font-weight: 500; opacity: 0.8; margin-top: 2px;">Computer Vision &
+                        Image Processing</span>
+                </div>
+                <i class="fa-solid fa-gamepad" style="margin-left: auto;"></i>
+            </div>
+
+            <div class="control-area" style="border-top: none; margin-top: 0; padding-top: 0;">
+                <!-- Live Stream -->
+                <div class="input-group">
+                    <label class="input-group-label">LIVE CAMERA</label>
+                    <button id="cam-toggle" class="btn-elegant" onmousedown="toggleCamera()"
+                        ontouchstart="toggleCamera()">
+                        <i class="fa-solid fa-video"></i> Start Live Stream
+                    </button>
+                    <div id="status-text" class="status-text">Ready</div>
+                </div>
+
+                <!-- Single Video Upload -->
+                <div class="input-group">
+                    <label class="input-group-label">UPLOAD VIDEO</label>
+                    <button class="btn-elegant" onclick="document.getElementById('single-upload').click()">
+                        <i class="fa-solid fa-upload"></i> Upload File
+                    </button>
+                    <input type="file" id="single-upload" accept="video/*" style="display: none;"
+                        onchange="handleSingleUpload(this)">
+                </div>
+
+                <!-- Batch Upload -->
+                <div class="input-group">
+                    <label class="input-group-label">BATCH PLAYLIST</label>
+                    <button class="btn-elegant" onclick="document.getElementById('batch-upload').click()">
+                        <i class="fa-solid fa-layer-group"></i> Upload Payload
+                    </button>
+                    <input type="file" id="batch-upload" accept="video/*" multiple style="display: none;"
+                        onchange="handleBatchUpload(this)">
+                </div>
+
+                <div id="upload-status"></div>
+            </div>
+        </aside>
+
+        <!-- CENTER: VIDEO & HEADER -->
+        <main class="main-view glass-panel" style="display:flex; flex-direction:column; padding:0; gap:0;">
+            <header class="main-header">
+                <img src="{{ url_for('static', filename='um_logo.png') }}" alt="University Malaya Logo" class="uni-logo"
+                    style="margin-right: 1.5rem;">
+                <div class="header-content">
+                    <h1 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 0.25rem;">Faculty of Computer Science
+                        and Information Technology</h1>
+                    <p style="font-size: 0.85rem; color: var(--accent-secondary); font-weight: 500;">Department of
+                        Artificial Intelligence</p>
+                </div>
+            </header>
+
+            <div
+                style="flex:1; position:relative; width:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                <!-- New Creative HUD Output -->
+                <div class="hud-pill" id="hud-pill">
+                    <span class="hud-label">DETECTED GESTURE</span>
+                    <span class="hud-value" id="hud-gesture">Waiting...</span>
+                </div>
+
+                <div style="position:relative;">
+                    <img src="{{ url_for('video_feed') }}" alt="Live Feed" class="video-feed" id="video-feed">
+                    <div class="overlay-status">
+                        <span class="label">LIVE</span>
+                        <div class="status-dot"></div>
+                    </div>
+                </div>
+
+                <div
+                    style="margin-top: 1rem; font-size: 0.8rem; color: var(--accent-secondary); font-weight: 500; letter-spacing: 0.05em;">
+                    Developed by Group 4 (Vision)
+                </div>
+            </div>
+        </main>
+
+        <!-- RIGHT SIDEBAR: OUTPUT & LOGS -->
+        <aside class="sidebar right-sidebar glass-panel">
+            <div class="logo">
+                <div style="display:flex; flex-direction:column;">
+                    <span style="font-size: 0.9rem; font-weight: 800; letter-spacing: 0.1em;">SESSION LOG</span>
+                </div>
+                <i class="fa-solid fa-list-ul" style="margin-left: auto;"></i>
+            </div>
+
+            <div class="metric-group">
+                <span class="label">Confidence</span>
+                <div class="value-display" id="confidence-val" style="font-size: 1.5rem; color: var(--text-main);">0%
+                </div>
+            </div>
+
+            <!-- Top Candidates -->
+            <div class="metric-group" style="flex-grow: 0;">
+                <span class="label">Top Candidates</span>
+                <div class="top-predictions" id="top-predictions">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <div class="metric-group" style="flex-grow: 1; display:flex; flex-direction:column; min-height: 0;">
+                <span class="label">Session Log</span>
+                <div class="history-log" id="history-log">
+                    <!-- Items added here -->
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        let isCameraRunning = true;
+        let lastLoggedGesture = null;
+
+        function toggleCamera() {
+            const btn = document.getElementById('cam-toggle');
+            const action = isCameraRunning ? 'stop' : 'start';
+
+            fetch('/api/camera/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action, source: 'webcam' })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    const vid = document.getElementById('video-feed');
+                    if (data.status === 'stopped') {
+                        isCameraRunning = false;
+                        vid.classList.remove('active');
+                        btn.innerHTML = '<i class="fa-solid fa-power-off"></i> Resume Stream';
+                        document.querySelector('.status-dot').style.background = '#333';
+                    } else {
+                        isCameraRunning = true;
+                        vid.classList.add('active');
+                        btn.innerHTML = '<i class="fa-solid fa-power-off"></i> Terminate Stream';
+                        document.querySelector('.status-dot').style.background = 'var(--accent-gold)';
+                    }
+                })
+                .catch(err => console.error(err));
+        }
+
+        function handleSingleUpload(input) {
+            console.log("Single upload triggered with file:", input.files[0]);
+            handleUpload(input, false);
+            input.value = ''; // Reset to allow re-selecting same file
+        }
+
+        function handleBatchUpload(input) {
+            console.log("Batch upload triggered with files:", input.files.length);
+            handleUpload(input, true);
+            input.value = ''; // Reset
+        }
+
+        function handleUpload(input, isBatch) {
+            const files = input.files;
+            if (!files.length) {
+                alert("No file selected!");
+                return;
+            }
+
+            const statusEl = document.getElementById('upload-status');
+            statusEl.textContent = isBatch ? `Uploading ${files.length} files...` : 'Uploading video...';
+            statusEl.style.opacity = '1';
+
+            const formData = new FormData();
+            if (isBatch) {
+                for (let i = 0; i < files.length; i++) {
+                    formData.append('files[]', files[i]);
+                }
+            } else {
+                formData.append('file', files[0]);
+            }
+
+            fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+                .then(res => {
+                    if (!res.ok) throw new Error(`Server Error: ${res.statusText}`);
+                    return res.json();
+                })
+                .then(data => {
+                    console.log("Upload response:", data);
+                    if (data.error) throw new Error(data.error);
+
+                    statusEl.textContent = 'Initializing Queuer...';
+
+                    // Construct Payload
+                    let payload = { action: 'start' };
+
+                    if (isBatch || (data.filenames && data.filenames.length > 0)) {
+                        payload.source = 'playlist';
+                        payload.filenames = data.filenames || [data.filename];
+                    } else {
+                        payload.source = 'video';
+                        payload.filename = data.filename;
+                    }
+
+                    console.log("Sending Control Payload:", payload);
+
+                    return fetch('/api/camera/control', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                })
+                .then(res => res.json())
+                .then(data => {
+                    console.log("Control response:", data);
+                    if (data.status === 'started') {
+                        isCameraRunning = true;
+                        const btn = document.getElementById('cam-toggle');
+                        btn.innerHTML = '<i class="fa-solid fa-stop"></i> Stop Source';
+                        document.getElementById('video-feed').classList.add('active');
+
+                        const type = isBatch ? "Batch Playlist" : "Single Video";
+                        addToLog(`New Source: ${type}`, "INFO");
+                        statusEl.textContent = 'Processing Started';
+                    } else {
+                        alert("Failed to start video: " + (data.error || "Unknown error"));
+                    }
+                    setTimeout(() => { statusEl.style.opacity = '0'; }, 3000);
+                })
+                .catch(err => {
+                    console.error("Upload/Control Error:", err);
+                    statusEl.textContent = 'Error!';
+                    alert("Upload Failed: " + err.message);
+                });
+        }
+
+        function addToLog(gesture, confidence) {
+            const log = document.getElementById('history-log');
+            const item = document.createElement('div');
+            item.className = 'history-item';
+
+            const time = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            item.innerHTML = `
+                <span>${gesture}</span>
+                <span>${confidence}</span>
+            `;
+
+            log.prepend(item);
+        }
+
+        function updateStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update Gesture Name (HUD)
+                    const gestureEl = document.getElementById('hud-gesture');
+                    const confEl = document.getElementById('confidence-val');
+
+                    if (data.gesture) {
+                        const gestureName = data.gesture.toUpperCase().replace(/_/g, ' ');
+                        gestureEl.textContent = gestureName;
+
+                        // Add animation class briefly
+                        const hudPill = document.getElementById('hud-pill');
+                        hudPill.classList.add('pulse');
+                        setTimeout(() => hudPill.classList.remove('pulse'), 300);
+
+                        const confVal = (data.confidence * 100).toFixed(1) + '%';
+                        confEl.textContent = confVal;
+
+                        // Logic for logging: Log if it's a new gesture and high confidence
+                        if (gestureName !== lastLoggedGesture && data.confidence > 0.85) {
+                            lastLoggedGesture = gestureName;
+                            addToLog(gestureName, confVal);
+                        }
+                    }
+
+                    // Update Top Predictions (Restored Feature)
+                    const listEl = document.getElementById('top-predictions');
+                    listEl.innerHTML = '';
+                    if (data.top_3 && data.top_3.length > 0) {
+                        data.top_3.forEach(item => {
+                            const div = document.createElement('div');
+                            div.className = 'pred-item';
+                            const name = item.name.replace(/_/g, ' ');
+                            const prob = (item.prob * 100).toFixed(0);
+
+                            div.innerHTML = `
+                                <span>${name}</span>
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <span>${prob}%</span>
+                                    <div class="pred-bar-bg">
+                                        <div class="pred-bar" style="width: ${prob}%"></div>
+                                    </div>
+                                </div>
+                            `;
+                            listEl.appendChild(div);
+                        });
+                    }
+                })
+                .catch(err => console.error(err));
+        }
+
+        setInterval(updateStatus, 150);
+        document.getElementById('video-feed').classList.add('active'); // Init active
+    </script>
+</body>
+
+</html>
