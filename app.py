@@ -5,7 +5,7 @@ import cv2
 import threading
 import time
 import atexit
-from video_processor import GestureRecognizer, GESTURE_NAMES
+from video_processor import GestureRecognizer, GESTURE_NAMES, GESTURE_TRANSLATIONS
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -70,6 +70,11 @@ class CameraStream:
     def update(self):
         global outputFrame
         global latest_prediction
+        
+        # Track predictions for continuous gloss-level prediction
+        frame_buffer = []  # Buffer to collect 30 frames
+        gloss_predictions = []  # Store all gloss predictions with confidence
+        
         while True:
             if self.running and self.video is not None and self.video.isOpened():
                 success, frame = self.video.read()
@@ -78,56 +83,95 @@ class CameraStream:
                     if self.source == 0:
                         frame = cv2.flip(frame, 1)
                     
-                    # Process frame
+                    # Add frame to buffer
+                    frame_buffer.append(frame.copy())
+                    
+                    # Process frame for visualization
                     try:
                         result = self.recognizer.predict(frame)
                         
-                        # Update global prediction state
-                        probs = result['probabilities']
-                        top_3 = []
-                        if probs is not None:
-                            top_indices = probs.argsort()[-3:][::-1]
-                            top_3 = [
-                                {"name": GESTURE_NAMES.get(i, f"G{i}"), "prob": float(probs[i])}
-                                for i in top_indices
-                            ]
-                        
-                        # Enforce Threshold
-                        gesture_name = result['gesture_name']
-                        confidence = float(result['confidence'])
-                        
-                        if gesture_name is None or confidence < 0.6:
-                            gesture_name = "Unknown"
-                            
-                        latest_prediction = {
-                            "gesture": gesture_name,
-                            "confidence": confidence,
-                            "top_3": top_3
-                        }
-
                         # Draw results
                         annotated_frame = self.recognizer.draw_landmarks(frame, result['pose_result'], result['hand_result'])
                         
                         with lock:
                             outputFrame = annotated_frame.copy()
+                        
+                        # CONTINUOUS GLOSS-LEVEL PREDICTION
+                        # When we have 30 frames, predict the gloss
+                        if len(frame_buffer) >= 30:
+                            # Process the 30-frame window for gloss prediction
+                            window_result = self.recognizer.predict(frame_buffer[-1])  # Use last frame's result
+                            
+                            probs = window_result['probabilities']
+                            top_3 = []
+                            if probs is not None:
+                                top_indices = probs.argsort()[-3:][::-1]
+                                top_3 = [
+                                    {"name": GESTURE_NAMES.get(i, f"G{i}"), "prob": float(probs[i])}
+                                    for i in top_indices
+                                ]
+                            
+                            gesture_name = window_result['gesture_name']
+                            confidence = float(window_result['confidence'])
+                            
+                            if gesture_name is None or confidence < 0.6:
+                                gesture_name = "Unknown"
+                            
+                            # For webcam: update immediately
+                            # For video: accumulate glosses and show highest confidence
+                            if self.source == 0:
+                                # Webcam: real-time updates
+                                latest_prediction = {
+                                    "gesture": gesture_name,
+                                    "confidence": confidence,
+                                    "top_3": top_3
+                                }
+                            else:
+                                # Video: accumulate gloss predictions
+                                if gesture_name != "Unknown":
+                                    gloss_predictions.append({
+                                        "gesture": gesture_name,
+                                        "confidence": confidence,
+                                        "top_3": top_3
+                                    })
+                                    
+                                    # Update display with highest confidence gloss so far
+                                    best_gloss = max(gloss_predictions, key=lambda x: x['confidence'])
+                                    latest_prediction = best_gloss
+                            
+                            # Slide the window (remove oldest 10 frames, keep overlap)
+                            frame_buffer = frame_buffer[10:]
+                            
                     except Exception as e:
                         print(f"Error processing frame: {e}")
                         
                 else:
                     # Video finished
                     if isinstance(self.source, str):
-                        print(f"Finished: {self.source}")
+                        print(f"Finished processing video: {self.source}")
+                        
+                        # Final gloss prediction: highest confidence from all windows
+                        if gloss_predictions:
+                            best_prediction = max(gloss_predictions, key=lambda x: x['confidence'])
+                            latest_prediction = best_prediction
+                            print(f"FINAL GLOSS: {best_prediction['gesture']} (confidence: {best_prediction['confidence']:.2%})")
+                            print(f"Total gloss predictions: {len(gloss_predictions)}")
+                        else:
+                            print("No valid gloss predictions found")
+                        
+                        # Clear buffers for next video
+                        frame_buffer = []
+                        gloss_predictions = []
                         
                         # Check queue
                         if self.queue:
-                            print(f"Starting next in queue. Remaining: {len(self.queue)}")
+                            print(f"Starting next video. Remaining: {len(self.queue)}")
                             self.video.release()
                             self.source = self.queue.pop(0)
                             self.video = cv2.VideoCapture(self.source)
-                            # Loop continues immediately with new source
                         else:
-                            print("Playlist finished.")
-                            self.running = False # Internal stop without clearing queue (already empty)
+                            print("All videos processed.")
+                            self.running = False
                             if self.video:
                                 self.video.release()
                                 self.video = None

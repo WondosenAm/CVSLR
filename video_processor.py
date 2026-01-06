@@ -159,6 +159,61 @@ GESTURE_NAMES = {
     49: 'tandas'
 }
 
+# English translations for Malaysian Sign Language gestures
+GESTURE_TRANSLATIONS = {
+    'abang': 'Brother',
+    'anak_lelaki': 'Son',
+    'anak_perempuan': 'Daughter',
+    'apa': 'What',
+    'apa_khabar': 'How are you',
+    'assalamualaikum': 'Peace be upon you',
+    'ayah': 'Father',
+    'bagaimana': 'How',
+    'bahasa_isyarat': 'Sign Language',
+    'baik': 'Good',
+    'bapa_saudara': 'Uncle',
+    'beli': 'Buy',
+    'beli_2': 'Buy (variant)',
+    'berapa': 'How much',
+    'bila': 'When',
+    'bomba': 'Firefighter',
+    'buat': 'Do/Make',
+    'emak': 'Mother',
+    'emak_saudara': 'Aunt',
+    'hari': 'Day',
+    'hi': 'Hi',
+    'hujan': 'Rain',
+    'jahat': 'Bad',
+    'jangan': 'Don\'t',
+    'kakak': 'Sister',
+    'keluarga': 'Family',
+    'kereta': 'Car',
+    'lelaki': 'Male',
+    'lemak': 'Fat',
+    'main': 'Play',
+    'mana': 'Where',
+    'masalah': 'Problem',
+    'nasi': 'Rice',
+    'nasi_lemak': 'Nasi Lemak',
+    'panas': 'Hot',
+    'panas_2': 'Hot (variant)',
+    'pandai': 'Smart',
+    'pandai_2': 'Smart (variant)',
+    'payung': 'Umbrella',
+    'perempuan': 'Female',
+    'perlahan': 'Slow',
+    'perlahan_2': 'Slow (variant)',
+    'pinjam': 'Borrow',
+    'polis': 'Police',
+    'pukul': 'Hit/Time',
+    'ribut': 'Storm',
+    'saudara': 'Sibling',
+    'sejuk': 'Cold',
+    'siapa': 'Who',
+    'tandas': 'Toilet',
+    'Unknown': 'Unknown'
+}
+
 class GestureRecognizer:
     def __init__(self, model_path='best_cnn_transformer_hybrid.pth'):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
